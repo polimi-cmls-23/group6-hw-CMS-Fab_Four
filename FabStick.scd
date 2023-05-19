@@ -16,14 +16,14 @@ s.waitForBoot{
         var input = In.ar(~reverbBus, 2);
         var wetSignal = GVerb.ar(input, roomsize, revtime) * rwet;
         var drySignal = input;
-        Out.ar(0, Select.ar(bypass, [drySignal, XFade2.ar(drySignal, wetSignal, rwet * 2 - 1)]));
+		Out.ar([0, 1], Select.ar(bypass, [drySignal, XFade2.ar(drySignal, wetSignal, rwet * 2 - 1)]));
     }).add;
 
     SynthDef(\delayEffect, { |maxdelaytime = 5, delaytime = 0.5, decaytime = 10, bypass = 1, dwet = 0.1|
         var input = In.ar(~delayBus, 2);
         var wetSignal = CombC.ar(input, maxdelaytime, delaytime, decaytime) * dwet;
         var drySignal = input;
-        Out.ar(0, Select.ar(bypass, [drySignal, XFade2.ar(drySignal, wetSignal, dwet * 2 - 1)]));
+        Out.ar([0, 1], Select.ar(bypass, [drySignal, XFade2.ar(drySignal, wetSignal, dwet * 2 - 1)]));
     }).add;
 
     // hit synth
