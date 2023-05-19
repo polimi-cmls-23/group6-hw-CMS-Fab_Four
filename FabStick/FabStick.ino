@@ -60,7 +60,7 @@ void setup() {
   BMI160.setAccelerometerRate(1000.0);
   Serial.println(BMI160.getAccelerometerRate());
 
-      connessione WiFi
+  //   connessione WiFi
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println("Communication with WiFi module failed!");
     while (true);
