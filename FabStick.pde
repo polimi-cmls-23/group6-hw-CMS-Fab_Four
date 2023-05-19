@@ -107,7 +107,7 @@ void setGradient(int x, int y, float w, float h, color c1, color c2) {
 
 
 void oscEvent(OscMessage msg) {
-  if (msg.checkAddrPattern("/mouseXY")) {
+  if (msg.checkAddrPattern("/XY")) {
     if (msg.checkTypetag("ff")) {
       x = msg.get(0).floatValue();
       y = 1 - msg.get(1).floatValue(); // Invert the y axis
