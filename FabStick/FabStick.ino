@@ -2,15 +2,20 @@
 #include <math.h>
 #include <WiFiNINA.h>
 #include <WiFiUdp.h>
+#include <curveFitting.h>
+#include <OSCMessage.h>
+#include <String.h>
 
 char ssid[] = "Vodafone-C02000124";      // your network SSID (name)
 char pass[] = "7PqrH2MaEkKMg476";   // your network password
 int status = WL_IDLE_STATUS;      // the WiFi radio's status
 
-char server[] = "192.168.1.7";  // indirizzo IP server python
-unsigned int localPort = 8888;    // porta settata in server python
+char server[] = "192.168.1.3";  // indirizzo IP server python
+unsigned int localPort = 57120;    // porta settata in server python
 
 WiFiUDP Udp;
+// WiFiClient wifiClient;
+OSCMessage oscMessage;
 
 const int i2c_addr = 0x69; 
 
@@ -60,7 +65,7 @@ void setup() {
   BMI160.setAccelerometerRate(1000.0);
   Serial.println(BMI160.getAccelerometerRate());
 
-  //   connessione WiFi
+    //connessione WiFi
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println("Communication with WiFi module failed!");
     while (true);
@@ -82,7 +87,7 @@ void loop() {
     //prima di calcolare la prima accelerazione aspetto dato che ho visto che l'accelerometro ci mette un po' a iniziare a funzionare
     delay(1000);
 
-  float acceleration = calcAccelModule();
+  float acceleration = calcAccelMean();
   // Serial.println(acceleration);
   storeAcceleration(acceleration);
   currentTime = millis();
@@ -90,6 +95,7 @@ void loop() {
   timeBuffer[commonIndex] = currentTime;
 
   if (!firstExecution) {
+    // Serial.println(calcAccelerationModule(commonIndex));
 
     float slope = 1000 * (acceleration - previousValue) / (currentTime - previousTime); //slope in g/s
 
@@ -108,7 +114,7 @@ void loop() {
 
 }
 
-float calcAccelModule() {
+float calcAccelMean() {
   //inizialmente calcolavo il modulo, ho visto che conviene calcolare la media tra i tre assi per poter identificare piú facilmente 
   //passaggi da valore positivo a negativo (cosa che in realtá non ho implementato ma si potrebbe fare, ma in ogni caso mi sembra piú preciso cosí)
 
@@ -191,30 +197,17 @@ bool detectStroke() {
         // Verifica la condizione 3, ovvero dopo il picco ci dev'essere una slope opposta a quella corrispondente al picco
         int nextSlopeIndex = commonIndex;
         if ((acceleration >= 0.0 && slopeBuffer[nextSlopeIndex] <= nextSlopeThreshold) || (acceleration < 0.0 && -slopeBuffer[nextSlopeIndex] <= nextSlopeThreshold)) {
-            // Serial.print("condition 3 (nextslope) verified: ");
-            // Serial.println(slopeBuffer[nextSlopeIndex]);
+
             previousStrokeTime = currentTime;  // Aggiorna il tempo dell'ultimo stroke rilevato
-
-
-
-            float speed = calcSpeed();
-            float accelModule = calcAccelerationModule((commonIndex - 1 + bufferSize) % bufferSize);
-            float accelModule2 = calcAccelerationModule((commonIndex - 2 + bufferSize) % bufferSize);
-            float accelModule4 = calcAccelerationModule((commonIndex - 3 + bufferSize) % bufferSize);
-            float velocity = (abs(acceleration * 200) 
-              + abs(slopeBuffer[i]/3 + slopeBuffer[(i + bufferSize - 1) % bufferSize]/3 + slopeBuffer[(i + bufferSize - 2) % bufferSize]/3) 
-              + (speed * 100) 
-              + ((accelModule/3 + accelModule2/3 + accelModule4/3) * 100))
-              /4;
-            float finalVelocity = constrain(map(velocity, 700, 3000, 0, 127), 0, 127)/127.0;
-
-            
-            
+            unsigned long start = millis();
+            float velocity = constrain(map(calcVelocity(),0, 150, 0, 127), 0, 127)/127.0;
+            unsigned long end = millis();
+            // Serial.println(calcVelocity());
             Serial.print("Stroke detected!: velocity = ");
-            Serial.println(finalVelocity);
-            sendValue(finalVelocity);
-            // Serial.println(commonIndex);
-            // printPreviousValues();
+            Serial.println(velocity);
+            Serial.print(end-start);
+            sendValue(velocity);
+
             return true;  
           
         }
@@ -225,17 +218,13 @@ bool detectStroke() {
   return false;  
 }
 
-float calcSpeed() {
-  float speedX = 0.0;
-  float speedY = 0.0;
-  float speedZ = 0.0;
-  for (int i = (commonIndex - 10 + bufferSize) % bufferSize; i != (commonIndex - 2 + bufferSize) % bufferSize; i = (i + 1) % bufferSize) {
-    unsigned long timeDelta = timeBuffer[(i+1)%bufferSize] - timeBuffer[i];
-    speedX +=  accelXBuffer[i] * timeDelta;
-    speedY +=  accelYBuffer[i] * timeDelta;
-    speedZ +=  accelZBuffer[i] * timeDelta;
+
+float calcSpeed(int length, double points[]) {
+  float speed = 0.0;
+  for (int i = 0; i<length; i++) {
+    speed += points[i];
   }
-  return sqrt(speedX*speedX + speedY*speedY + speedZ*speedZ);
+  return speed;
 }
 
 float calcAccelerationModule(int index) {
@@ -244,7 +233,30 @@ float calcAccelerationModule(int index) {
 
 void sendValue(float value) {
   Udp.beginPacket(server, localPort);
-  Udp.print(value, 4);
+  OSCMessage msg("/sensor");
+  msg.add(value);
+  msg.send(Udp);
   Udp.endPacket();
+
+}
+
+
+float calcVelocity() {
+  const int size = 20;
+  const int skip = 3;
+  const int order = 2;
+  double points[size];
+  double coeffs[order + 1];
+  int pointIndex = 0;
+  for (int i = (commonIndex - (size + skip) + bufferSize) % bufferSize; i != (commonIndex - skip + bufferSize) % bufferSize; i = (i + 1) % bufferSize) {
+    points[pointIndex] = calcAccelerationModule(i);
+    pointIndex++;
+  }
+  int ret = fitCurve(order, size, points, order + 1, coeffs);
+  double curva[size + skip];
+  for (int i = 0; i < size + skip; i++) {
+    curva[i] = coeffs[0]*i*i + coeffs[1]*i + coeffs[2];
+  }
+  return calcSpeed(size+skip, curva);
 }
 
