@@ -6,8 +6,8 @@
 #include <OSCMessage.h>
 #include <String.h>
 
-char ssid[] = "Vodafone-C02000124";      // your network SSID (name)
-char pass[] = "7PqrH2MaEkKMg476";   // your network password
+char ssid[] = "ssid";      // your network SSID (name)
+char pass[] = "password";   // your network password
 int status = WL_IDLE_STATUS;      // the WiFi radio's status
 
 char server[] = "192.168.1.3";  // indirizzo IP server python
@@ -15,7 +15,7 @@ unsigned int localPort = 57120;    // porta settata in server python
 
 WiFiUDP Udp;
 // WiFiClient wifiClient;
-OSCMessage oscMessage;
+OSCMessage msg("/sensor");
 
 const int i2c_addr = 0x69; 
 
@@ -199,13 +199,11 @@ bool detectStroke() {
         if ((acceleration >= 0.0 && slopeBuffer[nextSlopeIndex] <= nextSlopeThreshold) || (acceleration < 0.0 && -slopeBuffer[nextSlopeIndex] <= nextSlopeThreshold)) {
 
             previousStrokeTime = currentTime;  // Aggiorna il tempo dell'ultimo stroke rilevato
-            unsigned long start = millis();
+            
             float velocity = constrain(map(calcVelocity(),0, 150, 0, 127), 0, 127)/127.0;
-            unsigned long end = millis();
             // Serial.println(calcVelocity());
             Serial.print("Stroke detected!: velocity = ");
             Serial.println(velocity);
-            Serial.print(end-start);
             sendValue(velocity);
 
             return true;  
@@ -233,7 +231,8 @@ float calcAccelerationModule(int index) {
 
 void sendValue(float value) {
   Udp.beginPacket(server, localPort);
-  OSCMessage msg("/sensor");
+  
+  msg.empty();
   msg.add(value);
   msg.send(Udp);
   Udp.endPacket();
