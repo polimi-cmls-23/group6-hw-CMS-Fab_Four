@@ -7,6 +7,7 @@ NetAddress superCollider;
 float x, y;
 ArrayList<PVector> trail;
 int trailSize = 100;
+float sensorValue = 0;
 
 ControlP5 cp5;
 
@@ -28,29 +29,24 @@ void setup() {
      .setRange(0.01,7)
      .setValue(3.5);
   
-  cp5.addSlider("maxdelaytime")
-     .setPosition(50,150)
-     .setRange(0.01,10)
-     .setValue(5);
-  
   cp5.addSlider("delaytime")
-     .setPosition(50,200)
-     .setRange(0.01,1)
+     .setPosition(50,150)
+     .setRange(0.01,1.5)
      .setValue(0.5);
      
    cp5.addSlider("decaytime")
-     .setPosition(50,250)
+     .setPosition(50,200)
      .setRange(0.01,20)
      .setValue(10);
      
    cp5.addSlider("rwet")
-     .setPosition(50, 300)
+     .setPosition(50,250)
      .setRange(0, 1)
      .setValue(0.1)
      .setLabel("Reverb Dry/Wet");
   
   cp5.addSlider("dwet")
-     .setPosition(50, 350)
+     .setPosition(50,300)
      .setRange(0, 1)
      .setValue(0.1)
      .setLabel("Delay Dry/Wet");
@@ -58,7 +54,14 @@ void setup() {
 }
 
 void draw() {
-  background(0);
+  // Map sensor value to a color value
+  color backgroundColor = color(map(sensorValue, 0.0, 1.0, 0, 255), 0, 0);
+
+  // Set the background color
+  background(backgroundColor);
+  
+  // Reset sensorValue after updating the background color
+  sensorValue = 0;
 
   // Draw all positions in the trail as colored circles
   for (int i = 0; i < trail.size(); i++) {
@@ -132,10 +135,7 @@ void oscEvent(OscMessage msg) {
   if (msg.addrPattern().equals("/rwet")) {
     cp5.getController("rwet").setValue(msg.get(0).floatValue());
   } 
-  if (msg.addrPattern().equals("/maxdelaytime")) {
-    cp5.getController("maxdelaytime").setValue(msg.get(0).floatValue());
-  } 
-  if (msg.addrPattern().equals("/delaytime")) {
+    if (msg.addrPattern().equals("/delaytime")) {
     cp5.getController("delaytime").setValue(msg.get(0).floatValue());
   } 
   if (msg.addrPattern().equals("/decaytime")) {
@@ -144,5 +144,14 @@ void oscEvent(OscMessage msg) {
   if (msg.addrPattern().equals("/dwet")) {
     cp5.getController("dwet").setValue(msg.get(0).floatValue());
   } 
+  
+  if (msg.checkAddrPattern("/sensor")) {
+    if (msg.checkTypetag("f")) {
+      sensorValue = msg.get(0).floatValue();
+      println("Sensor Value: " + sensorValue);
+    } else {
+      println("Unexpected typetag in OSC message: " + msg.typetag());
+    }
+  }
    
 }
