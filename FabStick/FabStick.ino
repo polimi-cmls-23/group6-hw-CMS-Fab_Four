@@ -6,16 +6,14 @@
 #include <OSCMessage.h>
 #include <String.h>
 
-char ssid[] = "ssid";      // your network SSID (name)
+char ssid[] = "SSID";      // your network SSID (name)
 char pass[] = "password";   // your network password
 int status = WL_IDLE_STATUS;      // the WiFi radio's status
 
-char server[] = "192.168.1.3";  // indirizzo IP server python
+char server[] = "192.168.1.14";  // indirizzo IP server python
 unsigned int localPort = 57120;    // porta settata in server python
 
 WiFiUDP Udp;
-// WiFiClient wifiClient;
-OSCMessage msg("/sensor");
 
 const int i2c_addr = 0x69; 
 
@@ -95,7 +93,6 @@ void loop() {
   timeBuffer[commonIndex] = currentTime;
 
   if (!firstExecution) {
-    // Serial.println(calcAccelerationModule(commonIndex));
 
     float slope = 1000 * (acceleration - previousValue) / (currentTime - previousTime); //slope in g/s
 
@@ -167,63 +164,47 @@ void updatePreviousValues(float acceleration, unsigned long currentTime) {
   previousTime = currentTime;
 }
 
-bool detectStroke() {
+void detectStroke() {
 
-  // Verifica se è trascorso abbastanza tempo dall'ultimo stroke rilevato
+  // Check if enough time has passed since the last detected stroke.
   if (currentTime - previousStrokeTime < minStrokeInterval) {
-    return false;  
+    return;  
   }
 
-  
-
     float acceleration = accelerationBuffer[(commonIndex - 1 + bufferSize) % bufferSize];
-    //verifico la condizione 1, ovvero se il valore assoluto dell'accelerazione supera la soglia
+    // check condition 1, which is whether the absolute value of the acceleration exceeds the threshold.
     if (abs(acceleration) > accelThreshold) {
       
-      // Serial.print("condition 1 (accel) verified: ");
-      // Serial.println(acceleration);
-
-
-      // Verifica la condizione 2, ovvero, se acceleration é positiva ci deve corrispondere una slope positiva maggiore della soglia,
-      //altrimenti una slope negativa minore di -soglia
+      // Check condition 2, which is if the acceleration is positive, there should be a positive slope greater than the threshold; 
+      //otherwise, if the acceleration is negative, there should be a negative slope smaller than the negative threshold.
       int prevSlopeIndex = (commonIndex - 1 + bufferSize) % bufferSize;
       for (int i = prevSlopeIndex; i != (prevSlopeIndex + bufferSize - 4) % bufferSize; i = (i - 1 + bufferSize) % bufferSize ) {
 
       
       if ((acceleration >= 0.0 && slopeBuffer[i] > prevSlopeThreshold) || (acceleration < 0.0 && -slopeBuffer[i] > prevSlopeThreshold)) {
-        // Serial.print("condition 2 (prevslope) verified: ");
-        // Serial.println(slopeBuffer[i]);
 
-        // Verifica la condizione 3, ovvero dopo il picco ci dev'essere una slope opposta a quella corrispondente al picco
+        // Check condition 3, which is after the peak there must be a slope opposite to the one corresponding to the peak.
         int nextSlopeIndex = commonIndex;
         if ((acceleration >= 0.0 && slopeBuffer[nextSlopeIndex] <= nextSlopeThreshold) || (acceleration < 0.0 && -slopeBuffer[nextSlopeIndex] <= nextSlopeThreshold)) {
 
-            previousStrokeTime = currentTime;  // Aggiorna il tempo dell'ultimo stroke rilevato
+            previousStrokeTime = currentTime;  // Update the time of the last detected stroke.
             
-            float velocity = constrain(map(calcVelocity(),0, 150, 0, 127), 0, 127)/127.0;
-            // Serial.println(calcVelocity());
+            float velocity = constrain(map(calcVelocity(),0, 45, 0, 127), 0, 127)/127.0;
+
+            sendValue(velocity);
             Serial.print("Stroke detected!: velocity = ");
             Serial.println(velocity);
-            sendValue(velocity);
 
-            return true;  
           
         }
       }
     }
   }
 
-  return false;  
 }
 
 
-float calcSpeed(int length, double points[]) {
-  float speed = 0.0;
-  for (int i = 0; i<length; i++) {
-    speed += points[i];
-  }
-  return speed;
-}
+
 
 float calcAccelerationModule(int index) {
   return sqrt(accelXBuffer[index]*accelXBuffer[index] + accelYBuffer[index]*accelYBuffer[index] + accelZBuffer[index]*accelZBuffer[index]);
@@ -232,7 +213,8 @@ float calcAccelerationModule(int index) {
 void sendValue(float value) {
   Udp.beginPacket(server, localPort);
   
-  msg.empty();
+  // msg.empty();
+  OSCMessage msg("/sensor");
   msg.add(value);
   msg.send(Udp);
   Udp.endPacket();
@@ -241,21 +223,35 @@ void sendValue(float value) {
 
 
 float calcVelocity() {
-  const int size = 20;
-  const int skip = 3;
-  const int order = 2;
-  double points[size];
+  const int size = 15; //number of samples used to calculate the curve
+  const int skip = 3; //number of last samples to skip
+  const int order = 2; //order of the curve calculated
+  double points[size]; //array where acceleration modules are stored
   double coeffs[order + 1];
   int pointIndex = 0;
+
+  //calculation of acceleration modules
   for (int i = (commonIndex - (size + skip) + bufferSize) % bufferSize; i != (commonIndex - skip + bufferSize) % bufferSize; i = (i + 1) % bufferSize) {
     points[pointIndex] = calcAccelerationModule(i);
     pointIndex++;
   }
+  //calculation of the curve using polynomial regression
+  //since every sample is stored one ms after the previous, there's no need to use the time delta as independent variable
   int ret = fitCurve(order, size, points, order + 1, coeffs);
-  double curva[size + skip];
+  double curve[size + skip];
+  //filling of the curve, considering the skipped samples too
   for (int i = 0; i < size + skip; i++) {
-    curva[i] = coeffs[0]*i*i + coeffs[1]*i + coeffs[2];
+    curve[i] = coeffs[0]*i*i + coeffs[1]*i + coeffs[2];
   }
-  return calcSpeed(size+skip, curva);
+  //"speed" calculation
+  return calcSpeed(size+skip, curve);
+}
+
+float calcSpeed(int length, double points[]) {
+  float speed = 0.0;
+  for (int i = 0; i<length; i++) {
+    speed += points[i]; 
+  }
+  return speed;
 }
 
