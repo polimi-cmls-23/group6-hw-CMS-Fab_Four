@@ -12,7 +12,7 @@ float sensorValue = 0;
 ControlP5 cp5;
 
 void setup() {
-  size(800, 600);
+  size(1024, 768);
   oscP5 = new OscP5(this, 45777);
   superCollider = new NetAddress("localhost", 57120); // Address of SuperCollider
   background(0);
