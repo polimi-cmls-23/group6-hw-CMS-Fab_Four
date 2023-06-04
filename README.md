@@ -1,6 +1,6 @@
 # FabStick
 
-![FabStick Block Diagram](bd.jpg)
+![FabStick Block Diagram](diagram.png)
 
 *Figure 1: FabStick block diagram*
 
